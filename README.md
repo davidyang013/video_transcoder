@@ -15,7 +15,7 @@ transcode <input_file> <output_file>
 
 ## 配置
 在使用之前，请确保安装了以下依赖：
-- ffmpeg-python
+- python 3.8 
 
 ## 贡献
 欢迎提交问题和贡献代码！请查看 [贡献指南](CONTRIBUTING.md) 以获取更多信息。
