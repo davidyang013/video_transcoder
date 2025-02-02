@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # 默认支持的视频格式
 DEFAULT_SUPPORTED_FORMATS = (
-    '.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v',
+    '.mp4', '.rmvb', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v',
     '.mp3', '.wav', '.aac', '.m4a', '.wma', '.ts', '.mts', '.m2ts', '.vob', '.3gp'
 )
 
@@ -134,7 +134,7 @@ class VideoTranscoder:
 
         return output_path
 
-    def merge_videos(self, chunk_files: List[Path], original_file: Path) -> None:
+    def merge_videos(self, chunk_files: List[Path], original_file: Path) -> bool:
         """合并切割后的视频文件"""
         output_path = original_file.with_name(f"{original_file.stem}..mp4")  # 使用原始文件名，无后缀，加上 "..mp4"
         logger.info(f"Merging {len(chunk_files)} chunks into {output_path.name}.")
@@ -148,18 +148,23 @@ class VideoTranscoder:
             cmd.append('quiet')
 
         logger.info(f"Executing merge command: {' '.join(cmd)}")
-        subprocess.run(cmd, check=True)
-        logger.info(f"Merged video created: {output_path.name}")
+        try:
+            subprocess.run(cmd, check=True)
+            logger.info(f"Merged video created: {output_path.name}")
+            # 删除中间文件
+            for chunk in chunk_files:
+                chunk.unlink()  # 删除原始切割文件
+                logger.info(f"Deleted original chunk file: {chunk.name}")
+            os.remove("file_list.txt")  # 删除文件列表
 
-        # 删除中间文件
-        for chunk in chunk_files:
-            chunk.unlink()  # 删除原始切割文件
-            logger.info(f"Deleted original chunk file: {chunk.name}")
-        os.remove("file_list.txt")  # 删除文件列表
-
-        # 删除原始文件
-        original_file.unlink()  # 删除最开始的原始文件
-        logger.info(f"Deleted original video file: {original_file.name}")
+            # # 删除原始文件
+            # original_file.unlink()  # 删除最开始的原始文件
+            # logger.info(f"Deleted original video file: {original_file.name}")
+            
+            return True  # 合并成功
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error merging videos: {e}")
+            return False  # 合并失败
 
     def transcode_video(self, input_path: Path) -> bool:
         """转码视频文件为 MP4 格式"""
@@ -182,7 +187,8 @@ class VideoTranscoder:
             if size_mb > CHUNK_SIZE_MB:
                 chunk_files = self.split_video(input_path, duration, size_mb)  # 切割视频
                 transcoded_chunks = [self.transcode_chunk(chunk) for chunk in chunk_files]  # 转换每个切割文件
-                self.merge_videos(transcoded_chunks, input_path)  # 合并切割后的视频
+                if not self.merge_videos(transcoded_chunks, input_path):  # 合并切割后的视频
+                    return False  # 如果合并失败，返回 False
             else:
                 # 生成新的输出文件名
                 output_path = input_path.with_name(f"{input_path.stem}..mp4")  # 输出文件名加上 "..mp4"
@@ -223,6 +229,8 @@ class VideoTranscoder:
                     logger.error(f"Output file is empty or not created: {output_path}")
                     return False
                 
+            return True  # 如果所有操作成功，返回 True
+
         except subprocess.CalledProcessError as e:
             logger.error(f"Transcoding error for {input_path}: {e}")
             logger.error(f"FFmpeg error output: {e.stderr}")  # 输出 ffmpeg 错误信息
